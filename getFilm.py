@@ -14,7 +14,7 @@ import math
 
 domain = 'https://zxzjtv.com'
 target = 'https://zxzjtv.com/video/480-1-1.html'
-HAVE_DOWN = ['第01集', '第02集']
+HAVE_DOWN = ['第20集']
 
 
 driver = webdriver.Chrome(ChromeDriverManager().install())
@@ -57,7 +57,7 @@ def getVideoIndex():
 
 def getVideoURLS():
     for item in PAGE_URLS:
-        if item['title'] in HAVE_DOWN:
+        if item['title'] not in HAVE_DOWN:
             continue
         print(domain + item['href'])
         driver.get(domain + item['href'])
@@ -95,13 +95,18 @@ def downloadSteam(videoData):
     content_size = int(video_res.headers['content-length'])
 
     print('开始下载：', videoData['title'], '总大小{size:.2f}M'.format(size = content_size / 1024 / 1024))
-
+    startTime = time.time()
+    index = 0
     f = open('/Users/kele/Pictures/疑犯追踪/{name}.mp4'.format(name=videoData['title']), 'wb')
     for chunk in video_res.iter_content(chunk_size=1024):
         if chunk:
             size += len(chunk)
-            print('下载进度{name}：{t}{p:.2f} %'.format(t=('>'*int(size*50 / content_size)),name=videoData['title'], p=float(size/content_size * 100)))
-
+            # 避免频繁打印 
+            if index % 5 == 0:
+                print('下载进度{name}：{t}{p:.2f} %'.format(t=('>'*int(size*50 / content_size)),name=videoData['title'], p=float(size/content_size * 100)))
+            index += 1
+            if index > 9999999:
+                index = 0
             f.write(chunk)
 
 def main():
