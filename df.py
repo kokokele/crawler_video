@@ -2,6 +2,11 @@ from lib2to3.pgen2 import driver
 from time import sleep, time
 from tkinter import PAGES
 import requests
+import os
+
+from tqdm import tqdm
+
+# 进度条 https://pypi.org/project/tqdm/
 
 # from bs4 import BeautifulSoup
 from webdriver_manager.chrome import ChromeDriverManager
@@ -14,7 +19,8 @@ import math
 
 domain = 'https://zxzjtv.com'
 target = 'https://zxzjtv.com/video/480-1-1.html'
-HAVE_DOWN = ['第20集']
+HAVE_DOWN = ['第02集', '第03集']
+DIST_FOLDER = '/Users/kele/Pictures/test'
 
 
 driver = webdriver.Chrome(ChromeDriverManager().install())
@@ -66,7 +72,6 @@ def getVideoURLS():
         video = driver.find_element_by_tag_name('video')
         videoURL = video.get_attribute('src')
         print('视频地址：', item['title'], videoURL)
-        # driver.close()
         VIEDO_URLS.append({'title': item['title'], 'url': videoURL});
     
     print('-----------------------------')
@@ -75,44 +80,67 @@ def getVideoURLS():
 
 def downVideo(videoData):
     print('开始下载：', videoData['title'])
-    video_res = requests.get(videoData['url'], headers={
+    res = requests.get(videoData['url'], headers={
             'User-Agent': random.choice(ua_list)
         })
     with open('/Users/kele/Pictures/new_m/{name}.mp4'.format(name=videoData['title']), "wb") as video_file:
-        video_file.write(video_res.content)
+        video_file.write(res.content)
         video_file.close()
-        print("{name} 下载完毕".format(name=videoData['title']));
+        print("{name} 下载完毕".format(name=videoData['title']))
 
-
+VIDEO_SIZE = {} # 记录初始大小
 def downloadSteam(videoData):
+    title = videoData['title']
+    url = videoData['url']
+    chunkSize = 1024
     
-    video_res = requests.get(videoData['url'], headers={
-            'User-Agent': random.choice(ua_list)
+    # 目标文件
+    distFile = '{folder}/{name}.mp4'.format(name = title, folder = DIST_FOLDER)
+
+    firstByte = 0
+    # 判断是否是二次加载
+    if os.path.exists(distFile):
+        firstByte = os.path.getsize(distFile)
+
+    res = requests.get(url, headers={
+        'User-Agent': random.choice(ua_list),
+        'Range': f"{firstByte}-"
         }, stream=True)
 
-    size = 0
-    chunk_size = 1024
-    content_size = int(video_res.headers['content-length'])
+    
+    contentSize = int(res.headers['content-length'])
 
-    print('开始下载：', videoData['title'], '总大小{size:.2f}M'.format(size = content_size / 1024 / 1024))
-    startTime = time.time()
-    index = 0
-    f = open('/Users/kele/Pictures/疑犯追踪/{name}.mp4'.format(name=videoData['title']), 'wb')
-    for chunk in video_res.iter_content(chunk_size=1024):
+    # 记录初始文件大小
+    if title not in VIDEO_SIZE:
+        VIDEO_SIZE[title] = contentSize
+
+    print('开始下载：', videoData['title'], '总大小{size:.2f}M'.format(size = contentSize / chunkSize / chunkSize))
+
+    desc = videoData['title']
+    if firstByte != 0:
+        desc += '- 断点续传！！！'
+
+    pbar = tqdm(total=VIDEO_SIZE[videoData['title']], initial=firstByte, unit='B', unit_scale=True, desc=desc)
+    
+    f = open(distFile, 'wb')
+    for chunk in res.iter_content(chunk_size=chunkSize):
         if chunk:
-            size += len(chunk)
-            # 避免频繁打印 
-            if index % 5 == 0:
-                print('下载进度{name}：{t}{p:.2f} %'.format(t=('>'*int(size*50 / content_size)),name=videoData['title'], p=float(size/content_size * 100)))
-            index += 1
-            if index > 9999999:
-                index = 0
+            pbar.update(chunkSize)
             f.write(chunk)
+
+    pbar.close()
+    print("{name} 下载完毕".format(name=title) )
+    # 断点续传 重新加载
+    print('判断断点续传：', os.path.getsize(distFile), VIDEO_SIZE[title])
+
+    # 保存后的文件和content-size有误差
+    if abs(os.path.getsize(distFile) - VIDEO_SIZE[title]) > 5000:
+        downloadSteam(videoData)
+
 
 def main():
     getVideoIndex()
     getVideoURLS()
-
 
 main()
 
@@ -120,6 +148,5 @@ pool = ThreadPool(processes=4)
 results2 = pool.map(downloadSteam, VIEDO_URLS)
 pool.close()
 pool.join()
-
 
 print('======全部下载完毕======')
